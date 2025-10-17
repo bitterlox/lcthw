@@ -25,8 +25,14 @@
         {
           devShells.default = pkgs.mkShell {
             packages = [
-              pkgs.stdenv
+              pkgs.man-db
+              pkgs.gcc
+              pkgs.gcc.man
+              pkgs.gnumake
+              pkgs.gnumake.man
               pkgs.lldb
+              pkgs.gdb
+              pkgs.valgrind
             ];
             shellHook = ''
               echo "welcome to a shell for C development"
