@@ -1,3 +1,4 @@
 .direnv
 .envrc
 .env
+./exercises/ex*/ex*
