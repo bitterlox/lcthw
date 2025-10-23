@@ -25,6 +25,7 @@
         {
           devShells.default = pkgs.mkShell {
             packages = [
+              pkgs.opencode
               pkgs.man-db
               pkgs.gcc
               pkgs.gcc.man
