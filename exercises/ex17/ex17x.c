@@ -54,12 +54,15 @@ void Address_print(struct Address *addr)
 }
 
 
-void Database_load_header(struct Connection *conn)
+struct DatabaseHeader Database_load_header(struct Connection *conn)
 {
-  int rc = fread(&conn->db->header, sizeof(struct DatabaseHeader), 1,
-      conn->file);
+  struct DatabaseHeader header = {.max_data = 0, .max_rows = 0};
+
+  int rc = fread(&header, sizeof(struct DatabaseHeader), 1, conn->file);
   if (rc != 1)
     die(conn,"failed to read db header from file");
+
+  return header;
 }
 
 void Database_load_data(struct Connection *conn)
@@ -99,28 +102,36 @@ void Database_write(struct Connection *conn)
     die(conn,"cannot flush database");
 }
 
+void Database_allocate(struct Connection *conn, int max_data, int max_rows)
+{
+  conn->db = malloc(sizeof(struct DatabaseHeader) +
+      sizeof(struct Address) * MAX_ROWS);
+  if (!conn->db)
+    die(conn,"memory error");
+}
+
 struct Connection *Database_open(const char *filename, char mode)
 {
   struct Connection *conn = malloc(sizeof(struct Connection));
   if (!conn)
     die(conn,"memory error");
 
-  conn->db = malloc(sizeof(struct DatabaseHeader) +
-      sizeof(struct Address) * MAX_ROWS);
-  if (!conn->db)
-    die(conn,"memory error");
-
   if (mode == 'c') {
     conn->file = fopen(filename, "wb");
   } else {
     conn->file = fopen(filename, "rb+");
-
     if (conn->file) {
-      Database_load_header(conn);
-      Database_load_data(conn);
+      
+      struct DatabaseHeader header = Database_load_header(conn);
+      
+      printf("loaded header, max_data: %d, max_rows: %d\n", 
+            header.max_data, header.max_rows);
 
-      printf("loaded db, max_data: %d, max_rows: %d\n", 
-          conn->db->header.max_data, conn->db->header.max_rows);
+      Database_allocate(conn, header.max_data, header.max_rows);
+
+      conn->db->header = header;
+
+      Database_load_data(conn);
     }
   }
 
@@ -144,6 +155,8 @@ void Database_close(struct Connection *conn)
 
 void Database_create(struct Connection *conn, int max_data, int max_rows)
 {
+  Database_allocate(conn, max_data, max_rows);
+
   struct DatabaseHeader header = {.max_data = max_data, .max_rows = max_rows};
 
   conn->db->header = header;
