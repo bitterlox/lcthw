@@ -14,9 +14,14 @@ struct Address {
   char email[MAX_DATA];
 };
 
-struct Database {
+
+struct DatabaseHeader {
   int max_data;
   int max_rows;
+};
+
+struct Database {
+  struct DatabaseHeader header;
   struct Address rows[MAX_ROWS];
 };
 
@@ -48,21 +53,22 @@ void Address_print(struct Address *addr)
   printf("%d %s %s\n", addr->id, addr->name, addr->email);
 }
 
-void Database_load(struct Connection *conn)
+
+void Database_load_header(struct Connection *conn)
 {
-  int rc = fread(&conn->db->max_data, sizeof(int), 1, conn->file);
+  int rc = fread(&conn->db->header, sizeof(struct DatabaseHeader), 1,
+      conn->file);
   if (rc != 1)
-    die(conn,"failed to read max_data to database");
+    die(conn,"failed to read db header from file");
+}
 
-  rc = fread(&conn->db->max_rows, sizeof(int), 1, conn->file);
-  if (rc != 1)
-    die(conn,"failed to read max_rows to database");
-
+void Database_load_data(struct Connection *conn)
+{
   int i = 0;
 
   for (i = 0; i < MAX_ROWS; i++) {
     // try a loop if this doesn't work
-    rc = fread(&conn->db->rows[i], sizeof(struct Address), 1, conn->file);
+    int rc = fread(&conn->db->rows[i], sizeof(struct Address), 1, conn->file);
     if (rc != 1)
       die(conn,"failed to read rows from database");
   }
@@ -72,13 +78,12 @@ void Database_write(struct Connection *conn)
 {
   rewind(conn->file);
 
-  int rc = fwrite(&conn->db->max_data, sizeof(int), 1, conn->file);
+  // maybe we should not keep writing this but we need to make sure that
+  // we rewind to just after the header otherwise we'd overwrite it
+  int rc = fwrite(&conn->db->header, sizeof(struct DatabaseHeader), 1,
+      conn->file);
   if (rc != 1)
-    die(conn,"failed to write max_data to database");
-
-  rc = fwrite(&conn->db->max_rows, sizeof(int), 1, conn->file);
-  if (rc != 1)
-    die(conn,"failed to write max_rows to database");
+    die(conn,"failed to write db header to file");
 
   int i = 0;
 
@@ -100,7 +105,8 @@ struct Connection *Database_open(const char *filename, char mode)
   if (!conn)
     die(conn,"memory error");
 
-  conn->db = malloc(2 * sizeof(int) + sizeof(struct Address) * MAX_ROWS);
+  conn->db = malloc(sizeof(struct DatabaseHeader) +
+      sizeof(struct Address) * MAX_ROWS);
   if (!conn->db)
     die(conn,"memory error");
 
@@ -110,9 +116,11 @@ struct Connection *Database_open(const char *filename, char mode)
     conn->file = fopen(filename, "rb+");
 
     if (conn->file) {
-      Database_load(conn);
+      Database_load_header(conn);
+      Database_load_data(conn);
+
       printf("loaded db, max_data: %d, max_rows: %d\n", 
-          conn->db->max_data, conn->db->max_rows);
+          conn->db->header.max_data, conn->db->header.max_rows);
     }
   }
 
@@ -136,8 +144,9 @@ void Database_close(struct Connection *conn)
 
 void Database_create(struct Connection *conn, int max_data, int max_rows)
 {
-  conn->db->max_data = max_data;
-  conn->db->max_rows = max_rows;
+  struct DatabaseHeader header = {.max_data = max_data, .max_rows = max_rows};
+
+  conn->db->header = header;
 
   int i = 0;
 
@@ -148,21 +157,6 @@ void Database_create(struct Connection *conn, int max_data, int max_rows)
     conn->db->rows[i] = addr;
   }
 }
-
-// void Database2_create(struct Connection *conn, int max_data, int max_rows)
-// {
-//   int i = 0;
-
-//   conn->db->max_data = max_data;
-//   conn->db->max_rows = max_rows;
-
-//   for (i = 0; i < max_rows; i++) {
-//     // make a prototype to initialize the db
-//     struct Address addr = {.id = i, .set = 0};
-//     // assign it
-//     conn->db->rows[i] = addr;
-//   }
-// }
 
 void Database_set(struct Connection *conn, int id, const char *name,
     const char *email)
@@ -242,8 +236,6 @@ int main(int argc, char *argv[])
         
       int max_data = atoi(argv[3]);
       int max_rows = atoi(argv[4]);
-
-      printf("max_data: %d, max_rows: %d\n", max_data, max_rows);
 
       Database_create(conn, max_data, max_rows);
       Database_write(conn);
