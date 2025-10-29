@@ -15,20 +15,9 @@ struct Address {
 };
 
 struct Database {
-  struct Address rows[MAX_ROWS];
-};
-
-struct Address2 {
-  int id;
-  int set;
-  char *name;
-  char *email;
-};
-
-struct Database2 {
   int max_data;
   int max_rows;
-  struct Address rows[];
+  struct Address rows[MAX_ROWS];
 };
 
 struct Connection {
@@ -61,12 +50,48 @@ void Address_print(struct Address *addr)
 
 void Database_load(struct Connection *conn)
 {
+  int rc = fread(&conn->db->max_data, sizeof(int), 1, conn->file);
+  if (rc != 1)
+    die(conn,"failed to read max_data to database");
 
-  // TODO: implement reading based on sized in DB
-  int rc = fread(conn->db, sizeof(struct Database), 1, conn->file);
-  if (rc != 1) {
-    die(conn,"failed to load database");
+  rc = fread(&conn->db->max_rows, sizeof(int), 1, conn->file);
+  if (rc != 1)
+    die(conn,"failed to read max_rows to database");
+
+  int i = 0;
+
+  for (i = 0; i < MAX_ROWS; i++) {
+    // try a loop if this doesn't work
+    rc = fread(&conn->db->rows[i], sizeof(struct Address), 1, conn->file);
+    if (rc != 1)
+      die(conn,"failed to read rows from database");
   }
+}
+
+void Database_write(struct Connection *conn)
+{
+  rewind(conn->file);
+
+  int rc = fwrite(&conn->db->max_data, sizeof(int), 1, conn->file);
+  if (rc != 1)
+    die(conn,"failed to write max_data to database");
+
+  rc = fwrite(&conn->db->max_rows, sizeof(int), 1, conn->file);
+  if (rc != 1)
+    die(conn,"failed to write max_rows to database");
+
+  int i = 0;
+
+  for (i = 0; i < MAX_ROWS; i++) {
+    // try a loop if this doesn't work
+    rc = fwrite(&conn->db->rows[i], sizeof(struct Address), 1, conn->file);
+    if (rc != 1)
+      die(conn,"failed to write rows to database");
+  }
+
+  rc = fflush(conn->file);
+  if (rc == -1)
+    die(conn,"cannot flush database");
 }
 
 struct Connection *Database_open(const char *filename, char mode)
@@ -75,8 +100,7 @@ struct Connection *Database_open(const char *filename, char mode)
   if (!conn)
     die(conn,"memory error");
 
-  // TODO: size based on 2 ints + (2 * max_size) * max_rows
-  conn->db = malloc(sizeof(struct Database));
+  conn->db = malloc(2 * sizeof(int) + sizeof(struct Address) * MAX_ROWS);
   if (!conn->db)
     die(conn,"memory error");
 
@@ -87,6 +111,8 @@ struct Connection *Database_open(const char *filename, char mode)
 
     if (conn->file) {
       Database_load(conn);
+      printf("loaded db, max_data: %d, max_rows: %d\n", 
+          conn->db->max_data, conn->db->max_rows);
     }
   }
 
@@ -107,23 +133,12 @@ void Database_close(struct Connection *conn)
   }
 }
 
-void Database_write(struct Connection *conn)
+
+void Database_create(struct Connection *conn, int max_data, int max_rows)
 {
-  rewind(conn->file);
+  conn->db->max_data = max_data;
+  conn->db->max_rows = max_rows;
 
-  // TODO: write the 2 ints first, then start a loop and write each
-  // record sequentiallysten
-  int rc = fwrite(conn->db, sizeof(struct Database), 1, conn->file);
-  if (rc != 1)
-    die(conn,"failed to write database");
-
-  rc = fflush(conn->file);
-  if (rc == -1)
-    die(conn,"cannot flush database");
-}
-
-void Database_create(struct Connection *conn)
-{
   int i = 0;
 
   for (i = 0; i < MAX_ROWS; i++) {
@@ -230,7 +245,7 @@ int main(int argc, char *argv[])
 
       printf("max_data: %d, max_rows: %d\n", max_data, max_rows);
 
-      Database_create(conn);
+      Database_create(conn, max_data, max_rows);
       Database_write(conn);
       break;
 
