@@ -4,8 +4,6 @@
 #include <errno.h>
 #include <string.h>
 
-#define MAX_ROWS 10
-
 struct Address {
   int id;
   int set;
@@ -21,7 +19,7 @@ struct DatabaseHeader {
 
 struct Database {
   struct DatabaseHeader header;
-  struct Address rows[MAX_ROWS];
+  struct Address *rows;
 };
 
 struct Connection {
@@ -68,7 +66,9 @@ void Database_load_data(struct Connection *conn)
 {
   int i = 0;
 
-  for (i = 0; i < MAX_ROWS; i++) {
+  int max_rows = conn->db->header.max_rows;
+
+  for (i = 0; i < max_rows; i++) {
     int rc = fread(&conn->db->rows[i].id, sizeof(int), 1, conn->file);
     if (rc != 1)
       die(conn,"failed to read id from database");
@@ -110,7 +110,9 @@ void Database_write(struct Connection *conn)
 
   int i = 0;
 
-  for (i = 0; i < MAX_ROWS; i++) {
+  int max_rows = conn->db->header.max_rows;
+
+  for (i = 0; i < max_rows; i++) {
     rc = fwrite(&conn->db->rows[i].id, sizeof(int), 1, conn->file);
     if (rc != 1)
       die(conn,"failed to write id to database");
@@ -140,10 +142,14 @@ void Database_write(struct Connection *conn)
 void Database_allocate(struct Connection *conn, int max_data, int max_rows)
 {
   int address_size = 2 * sizeof(int) + 2 * max_data;
-  conn->db = malloc(sizeof(struct DatabaseHeader) +
-      address_size * MAX_ROWS);
+
+  conn->db = malloc(sizeof(struct DatabaseHeader));
   if (!conn->db)
-    die(conn,"memory error");
+    die(conn,"couldn't allocate for db struct");
+
+  conn->db->rows = malloc(address_size * max_rows);
+  if (!conn->db)
+    die(conn,"couldn't allocate for rows");
 }
 
 struct Connection *Database_open(const char *filename, char mode)
@@ -185,7 +191,9 @@ void Database_close(struct Connection *conn)
     if (conn->db) {
       int i = 0;
 
-      for (i = 0; i < MAX_ROWS; i++) {
+      int max_rows = conn->db->header.max_rows;
+
+      for (i = 0; i < max_rows; i++) {
         if (conn->db->rows[i].name)
           free(conn->db->rows[i].name);
         if (conn->db->rows[i].email)
@@ -208,7 +216,7 @@ void Database_create(struct Connection *conn, int max_data, int max_rows)
 
   int i = 0;
 
-  for (i = 0; i < MAX_ROWS; i++) {
+  for (i = 0; i < max_rows; i++) {
     char *name = malloc(header.max_data);
     char *email = malloc(header.max_data);
 
@@ -274,7 +282,9 @@ void Database_list(struct Connection *conn)
   int i = 0;
   struct Database *db = conn->db;
 
-  for (i = 0; i < MAX_ROWS; i++) {
+  int max_rows = conn->db->header.max_rows;
+
+  for (i = 0; i < max_rows; i++) {
     struct Address *cur = &db->rows[i];
 
     if (cur->set) {
@@ -314,7 +324,9 @@ int main(int argc, char *argv[])
 
       int id = 0;
       if (argc > 3) id = atoi(argv[3]);
-      if (id > MAX_ROWS) die(conn,"there's not that many records");
+
+      max_rows = conn->db->header.max_rows;
+      if (id > max_rows) die(conn,"there's not that many records");
 
       Database_get(conn, id);
       break;
@@ -325,7 +337,9 @@ int main(int argc, char *argv[])
       
       id = 0;
       if (argc > 3) id = atoi(argv[3]);
-      if (id > MAX_ROWS) die(conn,"there's not that many records");
+
+      max_rows = conn->db->header.max_rows;
+      if (id > max_rows) die(conn,"there's not that many records");
 
       Database_set(conn, id, argv[4], argv[5]);
       Database_write(conn);
@@ -337,7 +351,10 @@ int main(int argc, char *argv[])
 
       id = 0;
       if (argc > 3) id = atoi(argv[3]);
-      if (id > MAX_ROWS) die(conn,"there's not that many records");
+
+
+      max_rows = conn->db->header.max_rows;
+      if (id > max_rows) die(conn,"there's not that many records");
 
       Database_delete(conn, id);
 
