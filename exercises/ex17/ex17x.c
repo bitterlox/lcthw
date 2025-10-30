@@ -4,14 +4,13 @@
 #include <errno.h>
 #include <string.h>
 
-#define MAX_DATA 512
-#define MAX_ROWS 100
+#define MAX_ROWS 10
 
 struct Address {
   int id;
   int set;
-  char name[MAX_DATA];
-  char email[MAX_DATA];
+  char *name;
+  char *email;
 };
 
 
@@ -70,10 +69,31 @@ void Database_load_data(struct Connection *conn)
   int i = 0;
 
   for (i = 0; i < MAX_ROWS; i++) {
-    // try a loop if this doesn't work
-    int rc = fread(&conn->db->rows[i], sizeof(struct Address), 1, conn->file);
+    int rc = fread(&conn->db->rows[i].id, sizeof(int), 1, conn->file);
     if (rc != 1)
-      die(conn,"failed to read rows from database");
+      die(conn,"failed to read id from database");
+
+    rc = fread(&conn->db->rows[i].set, sizeof(int), 1, conn->file);
+    if (rc != 1)
+      die(conn,"failed to read set from database");
+
+    char *name = malloc(conn->db->header.max_data);
+
+    rc = fread(name, conn->db->header.max_data, 1, conn->file);
+    if (rc != 1) {
+      printf("rc: %d\n", rc);
+      die(conn,"failed to read name from database");
+    }
+
+    conn->db->rows[i].name = name;
+
+    char *email = malloc(conn->db->header.max_data);
+
+    rc = fread(email, conn->db->header.max_data, 1, conn->file);
+    if (rc != 1)
+      die(conn,"failed to read email from database");
+
+    conn->db->rows[i].email = email;
   }
 }
 
@@ -91,10 +111,25 @@ void Database_write(struct Connection *conn)
   int i = 0;
 
   for (i = 0; i < MAX_ROWS; i++) {
-    // try a loop if this doesn't work
-    rc = fwrite(&conn->db->rows[i], sizeof(struct Address), 1, conn->file);
+    rc = fwrite(&conn->db->rows[i].id, sizeof(int), 1, conn->file);
     if (rc != 1)
-      die(conn,"failed to write rows to database");
+      die(conn,"failed to write id to database");
+
+    rc = fwrite(&conn->db->rows[i].set, sizeof(int), 1, conn->file);
+    if (rc != 1)
+      die(conn,"failed to write set to database");
+
+    if (conn->db->rows[i].name && conn->db->rows[i].email) {
+      rc = fwrite(conn->db->rows[i].name, conn->db->header.max_data, 1,
+          conn->file);
+      if (rc != 1)
+        die(conn,"failed to write name to database");
+
+      rc = fwrite(conn->db->rows[i].email, conn->db->header.max_data, 1,
+          conn->file);
+      if (rc != 1)
+        die(conn,"failed to write email to database");
+    }
   }
 
   rc = fflush(conn->file);
@@ -104,8 +139,9 @@ void Database_write(struct Connection *conn)
 
 void Database_allocate(struct Connection *conn, int max_data, int max_rows)
 {
+  int address_size = 2 * sizeof(int) + 2 * max_data;
   conn->db = malloc(sizeof(struct DatabaseHeader) +
-      sizeof(struct Address) * MAX_ROWS);
+      address_size * MAX_ROWS);
   if (!conn->db)
     die(conn,"memory error");
 }
@@ -146,8 +182,17 @@ void Database_close(struct Connection *conn)
   if (conn) {
     if (conn->file)
       fclose(conn->file);
-    if (conn->db)
+    if (conn->db) {
+      int i = 0;
+
+      for (i = 0; i < MAX_ROWS; i++) {
+        if (conn->db->rows[i].name)
+          free(conn->db->rows[i].name);
+        if (conn->db->rows[i].email)
+          free(conn->db->rows[i].email);
+      }
       free(conn->db);
+    }
     free(conn);
   }
 }
@@ -164,8 +209,10 @@ void Database_create(struct Connection *conn, int max_data, int max_rows)
   int i = 0;
 
   for (i = 0; i < MAX_ROWS; i++) {
-    // make a prototype to initialize the db
-    struct Address addr = {.id = i, .set = 0};
+    char *name = malloc(header.max_data);
+    char *email = malloc(header.max_data);
+
+    struct Address addr = {.id = i, .set = 0, .name = name, .email = email};
     // assign it
     conn->db->rows[i] = addr;
   }
@@ -178,20 +225,22 @@ void Database_set(struct Connection *conn, int id, const char *name,
   if (addr->set)
     die(conn,"already set, delete it first");
 
+  int max_data = conn->db->header.max_data;
+
   addr->set = 1;
-  // problem here is if input > MAX_DATA strncpy just truncates the input
+  // problem here is if input > max_data strncpy just truncates the input
   // but at that point it doesn't put a null byte at the end of the array
   // and so printf reads in email as well when it goes to print it
-  char *res = strncpy(addr->name, name, MAX_DATA);
+  char *res = strncpy(addr->name, name, max_data);
 
   if (!res)
     die(conn,"name copy failed");
 
   // this should fix it
   // altho should probably check if it did overflow
-  res[MAX_DATA-1] = '\0';
+  res[max_data-1] = '\0';
 
-  res = strncpy(addr->email, email, MAX_DATA);
+  res = strncpy(addr->email, email, max_data);
   if (!res)
     die(conn,"email copy failed");
 }
@@ -211,7 +260,12 @@ void Database_get(struct Connection *conn, int id)
 
 void Database_delete(struct Connection *conn, int id)
 {
-  struct Address addr = {.id = id, .set = 0};
+  struct Address prev = conn->db->rows[id];
+
+  // should probably also 0 out the bytes of name and email
+  struct Address addr = {.id = id, .set = 0, .name = prev.name, 
+    .email = prev.email};
+
   conn->db->rows[id] = addr;
 }
 
@@ -237,10 +291,6 @@ int main(int argc, char *argv[])
   char *filename = argv[1];
   char action = argv[2][0];
   struct Connection *conn = Database_open(filename, action);
-  int id = 0;
-
-  if (argc > 3) id = atoi(argv[3]);
-  if (id > MAX_ROWS) die(conn,"there's not that many records");
 
   switch (action) {
     case 'c':
@@ -250,6 +300,10 @@ int main(int argc, char *argv[])
       int max_data = atoi(argv[3]);
       int max_rows = atoi(argv[4]);
 
+      // if it's less than 8 we get a double free in close db
+      if (max_data < 8)
+        die(conn, "minimum row size is 8 bytes");
+
       Database_create(conn, max_data, max_rows);
       Database_write(conn);
       break;
@@ -258,12 +312,20 @@ int main(int argc, char *argv[])
       if (argc != 4)
         die(conn,"need an id to get");
 
+      int id = 0;
+      if (argc > 3) id = atoi(argv[3]);
+      if (id > MAX_ROWS) die(conn,"there's not that many records");
+
       Database_get(conn, id);
       break;
 
     case 's':
       if (argc != 6)
         die(conn,"need id, name, email to set");
+      
+      id = 0;
+      if (argc > 3) id = atoi(argv[3]);
+      if (id > MAX_ROWS) die(conn,"there's not that many records");
 
       Database_set(conn, id, argv[4], argv[5]);
       Database_write(conn);
@@ -273,7 +335,12 @@ int main(int argc, char *argv[])
       if (argc != 4)
         die(conn,"need id to delete");
 
+      id = 0;
+      if (argc > 3) id = atoi(argv[3]);
+      if (id > MAX_ROWS) die(conn,"there's not that many records");
+
       Database_delete(conn, id);
+
       Database_write(conn);
       break;
 
@@ -281,7 +348,7 @@ int main(int argc, char *argv[])
       Database_list(conn);
       break;
     default:
-      die(conn,"invalid action: c=create, g=get, d=del, l=list");
+      die(conn,"invalid action: c=create, g=get, s=set, d=del, l=list");
   }
 
   Database_close(conn);
