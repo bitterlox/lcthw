@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+
 void test_debug()
 {
   debug("I have Brown Hair.");
