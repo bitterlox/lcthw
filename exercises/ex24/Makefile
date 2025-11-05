@@ -1,6 +1,6 @@
 CFLAGS=-Wall -g -DNDEBUG
 
-all: ex23
+all: ex24
 
 clean:
-	rm -f ex23
+	rm -f ex24

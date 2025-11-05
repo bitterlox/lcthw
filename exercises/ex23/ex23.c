@@ -67,7 +67,7 @@ again:    *to++ = *from++;
           *to++ = *from++;
       case 1:
           *to++ = *from++;
-      if (--n > 0);
+      if (--n > 0)
           goto again;
     }
   }
