@@ -22,6 +22,9 @@
           system,
           ...
         }:
+        let
+          valgrind = if system == "x86_64-linux" then [ pkgs.valgrind ] else [ ];
+        in
         {
           devShells.default = pkgs.mkShell {
             packages = [
@@ -33,8 +36,8 @@
               pkgs.gnumake.man
               pkgs.lldb
               pkgs.gdb
-              pkgs.valgrind
-            ];
+            ]
+            ++ valgrind;
             shellHook = ''
               echo "welcome to a shell for C development"
             '';
