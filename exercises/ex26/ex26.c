@@ -49,7 +49,7 @@ char *open_file(const char *path)
 
   file = fopen(expanded_path, "r");
 
-  printf("file size: %lld \n", stat_res.st_size);
+  debug("file size: %lld \n", stat_res.st_size);
 
   // null byte at the end so printf works?
   char *buf = malloc(stat_res.st_size * sizeof(char) + 1);
@@ -89,17 +89,17 @@ char **load_config(const char *path)
   char *raw_config = open_file(path);
   check(raw_config, "config file is null");
 
-  int count = 0;
+ 
   char *parsed;
   char *to_parse = raw_config;
 
   char **config = malloc(MAX_CONFIG * sizeof(char *));
   check_mem(config);
 
-  do {
-    check(count + 1 < MAX_CONFIG, "max number of config values allowed is %d", MAX_CONFIG);
+  int count = 0;
 
-
+  for (; count < MAX_CONFIG; count++) {
+    
     // this is the wierdest function ever
     // apparently it has a hidden pointer it uses in subsequent calls
     // to keep parsing
@@ -113,8 +113,11 @@ char **load_config(const char *path)
 
     to_parse = NULL;
 
-    count++;
-  } while(1==1);
+  }
+
+  if (count == MAX_CONFIG) {
+    log_warn("max number of config values read is %d", MAX_CONFIG);
+  }
 
   release_file(raw_config);
 
