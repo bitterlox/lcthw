@@ -3,13 +3,14 @@
 #include <sys/stat.h>
 #include <wordexp.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "dbg.h"
 
 /*
  *  TODO:
  *  - args handling
- *    - word to grep for
+ *    - words to grep for
  *    - optional -o flag
  *  √ file hadling function
  *    - given a file path, open file at path and return buffer with content
@@ -129,6 +130,31 @@ error:
   release_config(config);
 
   return NULL;
+}
+
+typedef struct {
+  bool or;
+  char **words;
+} arguments;
+
+void release_args(arguments args)
+{
+
+}
+
+arguments setup_args(char *argv[])
+{
+  arguments args;
+
+  args.or = false;
+  args.words = NULL;
+
+  // todo: look for the -o flag, if found set args.or to true
+  
+  // todo: any other word found needs to be added to a dyamnically allocated
+  // array
+
+  return args;
 }
 
 
