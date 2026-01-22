@@ -3,3 +3,5 @@
 .env
 ./exercises/ex*/ex*
 *.db
+*.test
+*.dSYM
