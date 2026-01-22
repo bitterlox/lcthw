@@ -134,25 +134,44 @@ error:
 
 typedef struct {
   bool or;
+  int wordc;
   char **words;
 } arguments;
 
 void release_args(arguments args)
 {
-
+  for (int i = 0; i < args.wordc; i++) {
+    if (args.words[i]) {
+      free(args.words[i]);
+    }
+  }
+  free(args.words);
 }
 
-arguments setup_args(char *argv[])
+arguments setup_args(int argc, char *argv[])
 {
   arguments args;
 
   args.or = false;
-  args.words = NULL;
+  args.wordc = 0;
+  args.words = malloc(argc * sizeof(char **));
 
-  // todo: look for the -o flag, if found set args.or to true
-  
-  // todo: any other word found needs to be added to a dyamnically allocated
-  // array
+  for (int i = 1; i < argc; i++) {
+    if (strcmp("-o", argv[i]) == 0) {
+      debug("found -o flag");
+      args.or = true;
+
+      continue;
+    }
+
+    int len = strlen(argv[i]);
+    char *str = malloc(len * sizeof(char *));
+    strcpy(str, argv[i]);
+    args.words[args.wordc] = str;
+
+    args.wordc++;
+  }
+
 
   return args;
 }
@@ -168,6 +187,15 @@ int main(int argc, char *argv[])
     printf("config %d: %s\n", i, config[i]);
   }
 
+  arguments args = setup_args(argc, argv);
+
+  printf("count %d argc %d or %d\n", args.wordc, argc, args.or);
+
+  for (int i = 0; i < args.wordc; i++) {
+    printf("word %d %s \n", i, args.words[i]);
+  }
+
+  release_args(args);
   release_config(config);
 
 
