@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <glob.h>
 
 #include "dbg.h"
 
@@ -210,32 +211,44 @@ int main(int argc, char *argv[])
 
   arguments args = setup_args(argc, argv);
 
-  printf("count %d argc %d or %d\n", args.wordc, argc, args.or);
+  debug("count %d argc %d or %d\n", args.wordc, argc, args.or);
 
+  printf("words: ");
   for (int i = 0; i < args.wordc; i++) {
-    printf("word %d %s \n", i, args.words[i]);
+    printf("%s ", args.words[i]);
+  }
+  printf("\n");
+  
+  if (args.or) {
+    printf("running in OR mode\n");
+  } else {
+    printf("running in AND mode\n");
   }
 
   for (int i = 0; i < MAX_CONFIG && config[i]; i ++) {
-    char buf[256];
-    char filepath[256];
-    char *cwd = getcwd(buf, 256);
+    glob_t glob_result;
 
-    sprintf(filepath, "%s/%s", cwd, config[i]);
+    int code = glob(config[i], 0, NULL, &glob_result);
+    check(code == 0, "glob err");
 
-    printf("trying file: %s\n", cwd);
+    debug("glob matched %d paths\n", glob_result.gl_pathc);
 
-    char *content = open_file(filepath);
-    check(content, "%s file is null", filepath);
+    for (int j = 0; j < glob_result.gl_pathc; j++) {
+      char *filepath = glob_result.gl_pathv[j];
 
-    bool found = find_words(content, args.words, args.wordc, args.or);
-    if (found) {
-      printf("match %s\n", args.words);
+      char *content = open_file(filepath);
+      check(content, "%s file is null", filepath);
+
+      printf("matching file %s with content: %s", filepath, content);
+
+      bool found = find_words(content, args.words, args.wordc, args.or);
+      if (found) {
+        printf("match!\n");
+      }
+
+
+      release_file(content);
     }
-
-    printf("%s: %s\n", filepath, content);
-
-    release_file(content);
   }
 
   release_args(args);
