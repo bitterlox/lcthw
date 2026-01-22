@@ -4,17 +4,19 @@
 #include <wordexp.h>
 #include <string.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #include "dbg.h"
 
 /*
  *  TODO:
- *  - args handling
+ *  √ args handling
  *    - words to grep for
  *    - optional -o flag
  *  √ file hadling function
  *    - given a file path, open file at path and return buffer with content
- *
+ *  √ function that greps in files
+ *  - glob pattern for config 
  *
  *
  *
@@ -176,16 +178,35 @@ arguments setup_args(int argc, char *argv[])
   return args;
 }
 
+bool find_words(char *text, char **words, int wordsc, bool or)
+{
+  bool acc = false;
+
+  for (int j = 0; j < wordsc; j++) {
+    debug("testing word: %s\n", words[j]);
+    if (strstr(text, words[j])) {
+      debug("found word: %s\n", words[j]);
+      if (j == 0) {
+        acc = true;
+      } else if (or) {
+        acc = acc || true;
+      } else {
+        acc = acc && true;
+      }
+    } else if (or) {
+        acc = acc || false;
+      } else {
+        acc = acc && false;
+      }
+  }
+
+  return acc;
+}
 
 int main(int argc, char *argv[])
 {
   char **config = load_config("~/.logfind");
   check(config, "config is null");
-
-
-  for (int i = 0; i < MAX_CONFIG && config[i]; i ++) {
-    printf("config %d: %s\n", i, config[i]);
-  }
 
   arguments args = setup_args(argc, argv);
 
@@ -193,6 +214,28 @@ int main(int argc, char *argv[])
 
   for (int i = 0; i < args.wordc; i++) {
     printf("word %d %s \n", i, args.words[i]);
+  }
+
+  for (int i = 0; i < MAX_CONFIG && config[i]; i ++) {
+    char buf[256];
+    char filepath[256];
+    char *cwd = getcwd(buf, 256);
+
+    sprintf(filepath, "%s/%s", cwd, config[i]);
+
+    printf("trying file: %s\n", cwd);
+
+    char *content = open_file(filepath);
+    check(content, "%s file is null", filepath);
+
+    bool found = find_words(content, args.words, args.wordc, args.or);
+    if (found) {
+      printf("match %s\n", args.words);
+    }
+
+    printf("%s: %s\n", filepath, content);
+
+    release_file(content);
   }
 
   release_args(args);
